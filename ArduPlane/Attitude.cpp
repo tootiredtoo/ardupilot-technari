@@ -492,7 +492,42 @@ void Plane::stabilize()
 
         // if moving very slowly also zero the steering integrator
         if (ahrs.groundspeed() < 1) {
-            steerController.reset_I();            
+            steerController.reset_I();
+        }
+    }
+
+    /*
+      Catapult launch integrator reset (GPS-denied safe).
+
+      TKOFF_THR_MINACC is the existing parameter for catapult/hand-launch
+      acceleration detection. When body-frame forward acceleration exceeds
+      that threshold we record the launch moment and clear all attitude
+      integrators for 300 ms. This discards any windup that accumulated
+      while the aircraft was sitting on the rail with the turbine idling
+      (the normal pre-takeoff reset is gated on zero throttle, which never
+      fires when a turbine is at idle RPM). Raw INS AccX is used so the
+      logic works without GPS.
+    */
+    if (!is_zero(g.takeoff_throttle_min_accel)) {
+        const float body_accel_x = AP::ins().get_accel().x;
+        const uint32_t now_ms = AP_HAL::millis();
+
+        if (body_accel_x > g.takeoff_throttle_min_accel) {
+            if (takeoff_state.catapult_launch_ms == 0) {
+                takeoff_state.catapult_launch_ms = now_ms;
+            }
+        }
+
+        if (takeoff_state.catapult_launch_ms != 0) {
+            const uint32_t since_launch_ms = now_ms - takeoff_state.catapult_launch_ms;
+            if (since_launch_ms < 300U) {
+                rollController.reset_I();
+                pitchController.reset_I();
+                yawController.reset_I();
+            } else if (since_launch_ms > 5000U) {
+                // clear state so next launch can be detected
+                takeoff_state.catapult_launch_ms = 0;
+            }
         }
     }
 }
