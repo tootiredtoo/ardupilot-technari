@@ -477,22 +477,36 @@ void Plane::stabilize()
     }
 
     /*
-      see if we should zero the attitude controller integrators. 
-     */
-    if (is_zero(get_throttle_input()) &&
-        fabsf(relative_altitude) < 5.0f && 
-        fabsf(barometer.get_climb_rate()) < 0.5f &&
-        ahrs.groundspeed() < 3) {
-        // we are low, with no climb rate, and zero throttle, and very
-        // low ground speed. Zero the attitude controller
-        // integrators. This prevents integrator buildup pre-takeoff.
-        rollController.reset_I();
-        pitchController.reset_I();
-        yawController.reset_I();
+      see if we should zero the attitude controller integrators.
 
-        // if moving very slowly also zero the steering integrator
-        if (ahrs.groundspeed() < 1) {
-            steerController.reset_I();
+      Original condition required zero throttle, which prevents reset
+      when a turbine engine is idling on the catapult rail. Replace the
+      throttle gate with an airspeed/groundspeed check: if the aircraft
+      is clearly not moving through the air it cannot be flying, so the
+      integrators should be clean regardless of engine state. Prefer the
+      airspeed sensor (GPS-independent) when available.
+     */
+    {
+        float airspeed_est = 0.0f;
+        const bool have_airspeed = ahrs.airspeed_EAS(airspeed_est);
+        const bool not_moving_through_air = have_airspeed ? (airspeed_est < 2.0f)
+                                                          : (ahrs.groundspeed() < 3.0f);
+
+        if (not_moving_through_air &&
+            fabsf(relative_altitude) < 5.0f &&
+            fabsf(barometer.get_climb_rate()) < 0.5f) {
+            // we are low, not moving through the air, and not climbing.
+            // Zero the attitude controller integrators to prevent buildup pre-takeoff.
+            rollController.reset_I();
+            pitchController.reset_I();
+            yawController.reset_I();
+
+            // if barely moving also zero the steering integrator
+            const bool nearly_still = have_airspeed ? (airspeed_est < 1.0f)
+                                                    : (ahrs.groundspeed() < 1.0f);
+            if (nearly_still) {
+                steerController.reset_I();
+            }
         }
     }
 
