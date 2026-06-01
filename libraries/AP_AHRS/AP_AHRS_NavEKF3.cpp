@@ -67,10 +67,15 @@ void AP_AHRS_NavEKF3::get_results(AP_AHRS_Backend::Estimates &results)
     results.vert_pos_rate_D = EKF3.getPosDownDerivative();
     results.vert_pos_rate_D_valid = true;
 
+    // ground velocity estimate in meters/second, in North/East order
+    results.velocity_NE = results.velocity_NED.xy();
+
     /*
      * position estimates
      */
     results.location_valid = EKF3.getLLH(results.location);
+
+    results.hagl_valid = EKF3.getHAGL(results.hagl);
 }
 
 bool AP_AHRS_NavEKF3::pre_arm_check(bool requires_position, char *failure_msg, uint8_t failure_msg_len) const

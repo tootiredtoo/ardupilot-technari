@@ -24,7 +24,16 @@ const AP_Param::GroupInfo AP_Arming_Plane::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("BBOX_SPD", 4, AP_Arming_Plane, blackbox_speed, 5),
 #endif // AP_PLANE_BLACKBOX_LOGGING
-    
+
+    // @Param: GPS_MAX_DIST
+    // @DisplayName: GPS max arming distance from home
+    // @Description: Maximum distance (m) between GPS position and home at arm time. Exceeding this refuses arming even with force-arm to block pre-arm GPS spoofing (Lima/Peru displacement). Set 0 to disable.
+    // @Units: m
+    // @Range: 0 50000
+    // @Increment: 100
+    // @User: Advanced
+    AP_GROUPINFO("GPS_MAX_DIST", 5, AP_Arming_Plane, gps_max_arm_dist_m, 2000.0f),
+
     AP_GROUPEND
 };
 
@@ -147,7 +156,33 @@ bool AP_Arming_Plane::mandatory_checks(bool display_failure)
     // Call parent class checks
     ret &= AP_Arming::mandatory_checks(display_failure);
 
+    // GPS position plausibility — runs here so force-arm cannot bypass it
+    ret &= gps_position_plausibility_check(display_failure);
+
     return ret;
+}
+
+bool AP_Arming_Plane::gps_position_plausibility_check(bool report)
+{
+    // Only meaningful once home is established and GPS has a fix
+    if (!AP::ahrs().home_is_set()) {
+        return true;
+    }
+    if (gps_max_arm_dist_m <= 0.0f) {
+        return true;   // check disabled
+    }
+#if AP_GPS_ENABLED
+    const AP_GPS &gps = AP::gps();
+    if (gps.status() < AP_GPS_FixType::FIX_3D) {
+        return true;   // no fix — let the normal GPS check handle it
+    }
+    const float dist_m = AP::ahrs().get_home().get_distance(gps.location());
+    if (dist_m > gps_max_arm_dist_m) {
+        check_failed(report, "GPS %.0fm from home (spoof suspected)", dist_m);
+        return false;
+    }
+#endif
+    return true;
 }
 
 

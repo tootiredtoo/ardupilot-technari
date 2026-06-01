@@ -24,13 +24,10 @@ namespace SITL {
 
 class Battery {
 public:
-    void setup(float _capacity_Ah, float _resistance_ohm, float _max_voltage);
+    void setup(float _capacity_Ah, float _resistance_ohm, float _max_voltage, float _ambient_temperature_degC);
 
     // Resets the battery state if the configuration (e.g. from SIM_BATT_* parameters) has changed.
     void maybe_reset(float desired_voltage, float desired_capacity_Ah);
-
-    void init_voltage(float voltage);
-    void init_capacity(float capacity);
 
     // Call this periodically to "step" the battery forward in time
     void consume_energy(float current_amp, uint64_t now_us);
@@ -43,6 +40,7 @@ private:
     float capacity_Ah;
     float resistance_ohm;
     float max_voltage;
+    float ambient_temperature_degC;
     float voltage_set;
     float remaining_Ah;
     uint64_t last_us;

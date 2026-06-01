@@ -48,9 +48,6 @@
 
 #define earthRate 0.000072921f // earth rotation rate (rad/sec)
 
-// maximum allowed gyro bias (rad/sec)
-#define GYRO_BIAS_LIMIT 0.5f
-
 // initial accel bias uncertainty as a fraction of the state limit
 #define ACCEL_BIAS_LIM_SCALER 0.2f
 
@@ -488,7 +485,13 @@ public:
     // failure message
     // requires_position should be true if horizontal position configuration should be checked
     bool pre_arm_check(bool requires_position, char *failure_msg, uint8_t failure_msg_len) const;
-    
+
+    // clear the statesInitialised status which allows a reset and bootstrap alignment
+    void clearStatesInitialised(void) { statesInitialised = false; }
+
+    // return true if states have been initialised by a bootstrap alignment
+    bool isStatesInitialised(void) const { return statesInitialised; }
+
 private:
     EKFGSF_yaw *yawEstimator;
     AP_DAL &dal;
@@ -770,11 +773,8 @@ private:
     // fuse synthetic sideslip measurement of zero
     void FuseSideslip();
 
-    // zero specified range of rows in the state covariance matrix
-    void zeroRows(Matrix24 &covMat, uint8_t first, uint8_t last);
-
-    // zero specified range of columns in the state covariance matrix
-    void zeroCols(Matrix24 &covMat, uint8_t first, uint8_t last);
+    // zero specified state variances and covariances in state covariance matrix
+    void zeroStatesVarCov(uint8_t first, uint8_t last);
 
     // Reset the stored output history to current data
     void StoreOutputReset(void);
@@ -957,11 +957,6 @@ private:
     // Control reset of yaw and magnetic field states
     void controlMagYawReset();
 
-    // set the latitude and longitude and height used to set the NED origin
-    // All NED positions calculated by the filter will be relative to this location
-    // returns false if the origin has already been set
-    bool setOrigin(const Location &loc);
-
     // Assess GPS data quality and set gpsGoodToAlign
     void calcGpsGoodToAlign(void);
 
@@ -1009,9 +1004,6 @@ private:
 
     // Select height data to be fused from the available baro, range finder and GPS sources
     void selectHeightForFusion();
-
-    // zero attitude state covariances, but preserve variances
-    void zeroAttCovOnly();
 
     // record all requested yaw resets completed
     void recordYawResetsCompleted();
@@ -1614,6 +1606,9 @@ private:
 
     // vehicle specific initial gyro bias uncertainty
     ftype InitialGyroBiasUncertainty(void) const;
+
+    // get the gyro bias limit for this core's IMU
+    ftype getGyroBiasLimit(void) const;
 
     /*
       learn magnetometer biases from GPS yaw. Return true if the

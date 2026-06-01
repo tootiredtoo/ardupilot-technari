@@ -45,28 +45,6 @@ bool AP_AHRS_SIM::airspeed_EAS(uint8_t index, float &airspeed_ret) const
     return airspeed_EAS(airspeed_ret);
 }
 
-Vector2f AP_AHRS_SIM::groundspeed_vector(void)
-{
-    if (_sitl == nullptr) {
-        return Vector2f{};
-    }
-
-    const struct SITL::sitl_fdm &fdm = _sitl->state;
-
-    return Vector2f(fdm.speedN, fdm.speedE);
-}
-
-bool AP_AHRS_SIM::get_hagl(float &height) const
-{
-    if (_sitl == nullptr) {
-        return false;
-    }
-
-    height = _sitl->state.altitude - AP::ahrs().get_home().alt*0.01f;
-
-    return true;
-}
-
 bool AP_AHRS_SIM::get_relative_position_NED_origin(Vector3p &vec) const
 {
     if (_sitl == nullptr) {
@@ -222,12 +200,21 @@ void AP_AHRS_SIM::get_results(AP_AHRS_Backend::Estimates &results)
     results.velocity_NED = Vector3f(fdm.speedN, fdm.speedE, fdm.speedD);
     results.velocity_NED_valid = true;
 
+    // ground velocity estimate in meters/second, in North/East order
+    results.velocity_NE = results.velocity_NED.xy();
+
     // a derivative of the vertical position in m/s which is kinematically consistent with the vertical position is required by some control loops.
     // This is different to the vertical velocity from the EKF which is not always consistent with the vertical position due to the various errors that are being corrected for.
     results.vert_pos_rate_D_valid = true;
     results.vert_pos_rate_D = _sitl->state.speedD;
 
+    /*
+     * position estimates
+     */
     results.location_valid = get_location(results.location);
+
+    results.hagl_valid = true;
+    results.hagl = _sitl->state.altitude - AP::ahrs().get_home().alt*0.01f;
 
 #if HAL_NAVEKF3_AVAILABLE
     if (_sitl->odom_enable) {

@@ -46,8 +46,20 @@ protected:
     // Checks rc has been received if it is configured to be used
     bool rc_received_if_enabled_check(bool display_failure);
 
+    // GPS position sanity: reject arm if GPS is implausibly far from home.
+    // Runs inside mandatory_checks() so it cannot be bypassed by force-arm.
+    bool gps_position_plausibility_check(bool report);
+
 private:
     void change_arm_state(void);
+
+    // @Param: GPS_MAX_DIST
+    // @DisplayName: GPS max arming distance from home
+    // @Description: Maximum distance (m) between GPS position and home before arming is refused. Detects pre-arm GPS spoofing (e.g. Lima, Peru displacement). Set 0 to disable.
+    // @Units: m
+    // @Range: 0 50000
+    // @User: Advanced
+    AP_Float gps_max_arm_dist_m;
 
     // oneshot with duration AP_ARMING_DELAY_MS used by quadplane to delay spoolup after arming:
     // ignored unless OPTION_DELAY_ARMING or OPTION_TILT_DISARMED is set
