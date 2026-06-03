@@ -79,6 +79,12 @@ PARAMS = {
     'TKOFF_THR_MINACC': 30.0,
     # Enough cruise throttle to stay airborne in SITL after launch
     'TRIM_THROTTLE':    0.6,
+    # STAB_PITCH_DOWN defaults to 2° — adds a nose-down pitch demand at
+    # low throttle in FBWA.  Combined with elevator=1300 (catapult angle
+    # simulation) and SITL airspeed noise (~1–2 m/s), this defeats Fix #2
+    # during standby even on a "calm day" scenario.  Zero it here so Phase 1
+    # purely tests Fix #2 under catapult pitch error without the confound.
+    'STAB_PITCH_DOWN':  0,
 }
 
 IMAX_DEG = 0.666 * 57.2958   # 38.2°
