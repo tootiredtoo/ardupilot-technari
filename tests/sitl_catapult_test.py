@@ -60,6 +60,17 @@ PARAMS = {
 STANDBY_S    = 15   # simulated seconds on rail (real = STANDBY_S / SPEEDUP)
 I_WINDUP_THRESHOLD = 2.0   # degrees — if |I| exceeds this we call it a windup
 
+# Catapult rail pitch angle is 12.35° nose-up.
+# SITL cannot set initial aircraft attitude via parameters (no SIM_INIT_PITCH).
+# We approximate the equivalent pitch error by commanding nose-down elevator
+# (ch2 = 1300 PWM) during standby.  In FBWA this sets a negative pitch demand,
+# creating the same sign and approximate magnitude of pitch-rate error that
+# FBWA generates when the stationary plane is physically pitched up 12.35°:
+#   real catapult: pitch_error = 0° target − 12.35° actual = −12.35°
+#   SITL approx  : pitch_error driven by stick-commanded nose-down demand
+# Fix #2 (airspeed-gated reset) must zero I every cycle despite this error.
+CATAPULT_ELEVATOR_PWM = 1300   # nose-down RC override; neutral = 1500
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def start_sitl(binary):
@@ -202,8 +213,9 @@ def run_scenario(binary, label, extra_params=None):
 
         real_standby = STANDBY_S / SPEEDUP
         print(f"  Standby phase: {STANDBY_S}s simulated ({real_standby:.1f}s real), "
-              f"NOT armed, throttle signal=1300 (idle), wind=0...")
-        drain(m, real_standby)
+              f"NOT armed, throttle=1300 (idle), "
+              f"elevator={CATAPULT_ELEVATOR_PWM} (catapult ramp angle ~12.35°), wind=0...")
+        drain(m, real_standby, elevator_pwm=CATAPULT_ELEVATOR_PWM)
 
         print(f"  Done. Stopping SITL...")
     finally:

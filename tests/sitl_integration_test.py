@@ -44,6 +44,14 @@ STANDBY_S = 10.0
 LAUNCH_S  =  5.0
 FLIGHT_S  = 25.0
 
+# Catapult rail pitch angle is 12.35° nose-up.
+# SITL has no SIM_INIT_PITCH parameter, so we approximate the effect via
+# elevator RC override.  In FBWA, ch2 = 1300 PWM commands a nose-down pitch
+# demand, producing the same sign/magnitude of pitch-rate error as the real
+# catapult geometry (FBWA target 0° vs. actual +12.35° → error −12.35°).
+# Fix #2 must zero I every cycle despite this error.
+CATAPULT_ELEVATOR_PWM = 1300   # nose-down override; neutral = 1500
+
 TKOFF_MINACC_SITL = 3.0   # real: 30 m/s²; SITL motor peaks ~12 m/s²
 
 # Gust parameters injected at start of Phase 3
@@ -280,8 +288,9 @@ def main():
         rs = STANDBY_S / SPEEDUP
         print(f"\n  [PHASE 1] Calm standby — {STANDBY_S:.0f} s sim / {rs:.0f} s real")
         print(f"    Not armed, idle throttle, wind=0, ARSP≈0")
-        print(f"    Fix #2 should keep I ≈ 0 ...")
-        drain(m, rs, throttle=1300, elevator=1500)
+        print(f"    Elevator={CATAPULT_ELEVATOR_PWM} — simulates 12.35° catapult ramp pitch error")
+        print(f"    Fix #2 must zero I every cycle despite nose-down pitch demand ...")
+        drain(m, rs, throttle=1300, elevator=CATAPULT_ELEVATOR_PWM)
 
         # ── Phase 2: Catapult launch ──────────────────────────────────────
         rl = LAUNCH_S / SPEEDUP
