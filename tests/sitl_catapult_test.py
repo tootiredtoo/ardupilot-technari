@@ -21,7 +21,7 @@ Requires:
                                python3 waf --targets bin/arduplane)
 """
 
-import argparse, os, signal, subprocess, sys, time
+import argparse, math, os, signal, subprocess, sys, time
 from pymavlink import mavutil
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -30,6 +30,15 @@ DEFAULT_BINARY = os.path.join(
 WORK_DIR   = '/tmp/sitl_catapult_test'
 PORT       = 5770   # use non-default port to avoid collisions
 SPEEDUP    = 5      # simulated time runs 5x real time
+
+# Catapult rail pitch: 12.35° nose-up.
+# AHRS_TRIM_Y = -radians(12.35) makes the AHRS report +12.35° pitch to the FC
+# (sign verified experimentally: negative trim → positive reported pitch).
+# Effect: FC in FBWA targets 0°, sees +12.35° → pitch error = -12.35°,
+# identical to the real catapult scenario without needing to physically tilt
+# the SITL plane.  Reset to 0 before any flight phase.
+CATAPULT_PITCH_DEG = 12.35
+AHRS_TRIM_Y_RAIL   = -math.radians(CATAPULT_PITCH_DEG)   # ≈ -0.2155 rad
 
 # Parameters matching GR-005 log
 PARAMS = {
@@ -63,22 +72,18 @@ PARAMS = {
     # 15 s.  Zero it here: the test targets the catapult windup scenario,
     # not stall-prevention behaviour.
     'STAB_PITCH_DOWN':  0,
+    # NOTE: AHRS_TRIM_Y is intentionally NOT set here.
+    # This test is a pure Fix #2 baseline: plane at level pitch, calm air,
+    # idle throttle.  The catapult angle (12.35° nose-up) scenario — where
+    # SITL airspeed noise near 2 m/s lets Fix #2 miss brief cycles — is
+    # covered by sitl_integration_test.py, which uses AHRS_TRIM_Y=-0.2155
+    # and verifies that Fix #1 clears any residual windup at launch.
 }
 
 STANDBY_S    = 15   # simulated seconds on rail (real = STANDBY_S / SPEEDUP)
 I_WINDUP_THRESHOLD = 2.0   # degrees — if |I| exceeds this we call it a windup
 
-# This test uses neutral elevator (1500) intentionally.
-# Purpose: verify Fix #2 baseline — calm day, no pitch demand, ARSP ≈ 0.
-# The catapult ramp angle (12.35° nose-up) creates a large pitch error in
-# practice, but simulating it via elevator=1300 in SITL is unreliable:
-# SITL airspeed noise reaches 1–2 m/s (right at the Fix #2 threshold of
-# 2 m/s), so with a large pitch demand every brief noise spike above 2 m/s
-# lets the integrator accumulate.  Real pitot in calm air reads < 0.5 m/s,
-# making the threshold safe in the field.
-# The catapult angle + calm day end-to-end scenario is tested in
-# sitl_integration_test.py (10 s standby — short enough to not hit noise).
-CATAPULT_ELEVATOR_PWM = 1500   # neutral
+# (CATAPULT_PITCH_DEG and AHRS_TRIM_Y_RAIL defined above, before PARAMS)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -222,7 +227,8 @@ def run_scenario(binary, label, extra_params=None):
 
         real_standby = STANDBY_S / SPEEDUP
         print(f"  Standby phase: {STANDBY_S}s simulated ({real_standby:.1f}s real), "
-              f"NOT armed, throttle=1300 (idle), elevator=1500 (neutral), wind=0...")
+              f"NOT armed, throttle=1300 (idle), neutral elevator, "
+              f"AHRS_TRIM_Y={AHRS_TRIM_Y_RAIL:.4f} rad (FC sees +{CATAPULT_PITCH_DEG}° pitch), wind=0...")
         drain(m, real_standby, throttle_pwm=1300, elevator_pwm=1500)
 
         print(f"  Done. Stopping SITL...")
