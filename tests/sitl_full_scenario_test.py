@@ -49,7 +49,14 @@ LAUNCH_S    = 5.0    # simulated seconds arm → observe reset
 FLIGHT_S    = 15.0   # simulated seconds of free flight
 
 TKOFF_MINACC_SITL = 3.0   # real value 30 m/s²; SITL motor peaks ~12 m/s²
-ARSPD_OFS_RAIL    = 10.0  # m/s bias — bypasses Fix #2 during standby
+
+# SIM_ARSPD_OFS value that gives ~10 m/s airspeed reading on the stationary
+# rail, simulating turbine exhaust blowing across the pitot tube.
+# Formula (with ARSPD_OFFSET=0): ARSP = sqrt(ARSPD_RATIO × SIM_ARSPD_OFS)
+#   SIM_ARSPD_OFS = 50  →  sqrt(1.9936 × 50) ≈ 9.98 m/s  > 8.5 m/s threshold
+# This clears the underspeed lock so the integrator can wind, matching the
+# real GR-005 crash where turbine exhaust raised the pitot reading to 8–11 m/s.
+ARSPD_OFS_RAIL = 50   # raw pressure units ≈ 10 m/s equivalent
 
 # Parameters from GR-005_2_Crush.BIN
 PARAMS = {
@@ -60,6 +67,14 @@ PARAMS = {
     'TKOFF_THR_MINACC': 30.0,         # real value; won't trigger in SITL
     'SIM_ARSPD_OFS':    ARSPD_OFS_RAIL,
     'SIM_WIND_SPD':     0.0,
+    # Skip boot calibration and force ARSPD_OFFSET = 0.
+    # Without these the analog sensor calibrates at boot to offset ≈ 2014,
+    # making every reading report ~63 m/s regardless of actual airspeed.
+    # With SKIP_CAL=1 + OFFSET=0:
+    #   SIM_ARSPD_OFS=50 → ARSP ≈ 10 m/s  (above 8.5 m/s underspeed threshold)
+    #   SIM_ARSPD_OFS=0  → ARSP ≈  0 m/s  (launch phase, sensor sees real speed)
+    'ARSPD_SKIP_CAL':   1,
+    'ARSPD_OFFSET':     0.0,
 }
 
 
@@ -77,28 +92,31 @@ def start_sitl(binary):
         cwd=WORK_DIR,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         preexec_fn=os.setsid)
-    time.sleep(3)
+    time.sleep(5)   # allow full boot before connecting
     return proc
 
 
 def connect(port):
-    for _ in range(20):
+    for _ in range(30):
         try:
             m = mavutil.mavlink_connection(f'tcp:127.0.0.1:{port}', source_system=255)
             m.wait_heartbeat(timeout=5)
+            if m.target_system == 0:
+                time.sleep(1)
+                continue
             return m
         except Exception:
             time.sleep(1)
     raise RuntimeError("Cannot connect to SITL")
 
 
-def set_param(m, name, value, retries=3):
+def set_param(m, name, value, retries=5):
     for _ in range(retries):
         m.mav.param_set_send(
             m.target_system, m.target_component,
             name.encode(), float(value),
             mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
-        ack = m.recv_match(type='PARAM_VALUE', blocking=True, timeout=1)
+        ack = m.recv_match(type='PARAM_VALUE', blocking=True, timeout=2)
         if ack and ack.param_id.rstrip('\x00') == name:
             return
     print(f"  WARNING: no ACK for {name}={value}")

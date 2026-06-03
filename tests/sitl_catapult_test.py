@@ -39,15 +39,21 @@ PARAMS = {
     'PTCH_RATE_FF':     0.345,
     # Catapult detection threshold (real value from log)
     'TKOFF_THR_MINACC': 30.0,
-    # No wind — isolate the fix from environmental airspeed.
-    # Critical: without this, SITL simulates wind that raises airspeed
-    # above 2 m/s even when the plane is stationary, masking the fix.
+    # No wind and no airspeed bias — calm day, plane truly stationary.
+    # Fix #2 (airspeed-gated reset) fires when ARSP < 2 m/s.
     'SIM_WIND_SPD':     0.0,
     'SIM_WIND_DIR':     0.0,
+    'SIM_ARSPD_OFS':    0.0,
+    # Skip boot calibration and force ARSPD_OFFSET = 0.
+    # Without this the analog sensor calibrates at startup against the
+    # SITL raw reading (~0 ADC), which gets saved as offset ≈ 2014 and
+    # causes every subsequent reading to report ~63 m/s regardless of
+    # actual airspeed. With SKIP_CAL=1 + OFFSET=0 the sensor reports
+    # true dynamic pressure directly: SIM_ARSPD_OFS=0 → ARSP ≈ 0 m/s.
+    'ARSPD_SKIP_CAL':   1,
+    'ARSPD_OFFSET':     0.0,
     # Log while disarmed — we intentionally do NOT arm so the motor
     # stays off and the plane remains stationary (airspeed = 0).
-    # This matches the catapult standby: throttle signal non-zero
-    # (turbine at idle) but no thrust yet.
     'LOG_DISARMED':     1,
 }
 
@@ -57,6 +63,8 @@ I_WINDUP_THRESHOLD = 2.0   # degrees — if |I| exceeds this we call it a windup
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def start_sitl(binary):
+    import shutil
+    shutil.rmtree(WORK_DIR, ignore_errors=True)   # wipe stale EEPROM
     os.makedirs(WORK_DIR, exist_ok=True)
     cmd = [
         os.path.abspath(binary),
@@ -71,15 +79,19 @@ def start_sitl(binary):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         preexec_fn=os.setsid,
     )
-    time.sleep(3)
+    time.sleep(5)   # allow full boot before connecting
     return proc
 
 
 def connect(port):
-    for attempt in range(20):
+    for attempt in range(30):
         try:
             m = mavutil.mavlink_connection(f'tcp:127.0.0.1:{port}', source_system=255)
-            m.wait_heartbeat(timeout=5)
+            hb = m.wait_heartbeat(timeout=5)
+            # wait_heartbeat sets target_system; if it got 0 (GCS echo), retry
+            if m.target_system == 0:
+                time.sleep(1)
+                continue
             print(f"  Connected (sysid={m.target_system})")
             return m
         except Exception:
@@ -87,13 +99,13 @@ def connect(port):
     raise RuntimeError("Failed to connect to SITL")
 
 
-def set_param(m, name, value, retries=3):
+def set_param(m, name, value, retries=5):
     for _ in range(retries):
         m.mav.param_set_send(
             m.target_system, m.target_component,
             name.encode(), float(value),
             mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
-        ack = m.recv_match(type='PARAM_VALUE', blocking=True, timeout=1)
+        ack = m.recv_match(type='PARAM_VALUE', blocking=True, timeout=2)
         if ack and ack.param_id.rstrip('\x00') == name:
             return
     print(f"  WARNING: no ACK for {name}={value}")
