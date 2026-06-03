@@ -477,22 +477,71 @@ void Plane::stabilize()
     }
 
     /*
-      see if we should zero the attitude controller integrators. 
-     */
-    if (is_zero(get_throttle_input()) &&
-        fabsf(relative_altitude) < 5.0f && 
-        fabsf(barometer.get_climb_rate()) < 0.5f &&
-        ahrs.groundspeed() < 3) {
-        // we are low, with no climb rate, and zero throttle, and very
-        // low ground speed. Zero the attitude controller
-        // integrators. This prevents integrator buildup pre-takeoff.
-        rollController.reset_I();
-        pitchController.reset_I();
-        yawController.reset_I();
+      see if we should zero the attitude controller integrators.
 
-        // if moving very slowly also zero the steering integrator
-        if (ahrs.groundspeed() < 1) {
-            steerController.reset_I();            
+      Original condition required zero throttle, which prevents reset
+      when a turbine engine is idling on the catapult rail. Replace the
+      throttle gate with an airspeed/groundspeed check: if the aircraft
+      is clearly not moving through the air it cannot be flying, so the
+      integrators should be clean regardless of engine state. Prefer the
+      airspeed sensor (GPS-independent) when available.
+     */
+    {
+        float airspeed_est = 0.0f;
+        const bool have_airspeed = ahrs.airspeed_EAS(airspeed_est);
+        const bool not_moving_through_air = have_airspeed ? (airspeed_est < 2.0f)
+                                                          : (ahrs.groundspeed() < 3.0f);
+
+        if (not_moving_through_air &&
+            fabsf(relative_altitude) < 5.0f &&
+            fabsf(barometer.get_climb_rate()) < 0.5f) {
+            // we are low, not moving through the air, and not climbing.
+            // Zero the attitude controller integrators to prevent buildup pre-takeoff.
+            rollController.reset_I();
+            pitchController.reset_I();
+            yawController.reset_I();
+
+            // if barely moving also zero the steering integrator
+            const bool nearly_still = have_airspeed ? (airspeed_est < 1.0f)
+                                                    : (ahrs.groundspeed() < 1.0f);
+            if (nearly_still) {
+                steerController.reset_I();
+            }
+        }
+    }
+
+    /*
+      Catapult launch integrator reset (GPS-denied safe).
+
+      TKOFF_THR_MINACC is the existing parameter for catapult/hand-launch
+      acceleration detection. When body-frame forward acceleration exceeds
+      that threshold we record the launch moment and clear all attitude
+      integrators for 300 ms. This discards any windup that accumulated
+      while the aircraft was sitting on the rail with the turbine idling
+      (the normal pre-takeoff reset is gated on zero throttle, which never
+      fires when a turbine is at idle RPM). Raw INS AccX is used so the
+      logic works without GPS.
+    */
+    if (!is_zero(g.takeoff_throttle_min_accel)) {
+        const float body_accel_x = AP::ins().get_accel().x;
+        const uint32_t now_ms = AP_HAL::millis();
+
+        if (body_accel_x > g.takeoff_throttle_min_accel) {
+            if (takeoff_state.catapult_launch_ms == 0) {
+                takeoff_state.catapult_launch_ms = now_ms;
+            }
+        }
+
+        if (takeoff_state.catapult_launch_ms != 0) {
+            const uint32_t since_launch_ms = now_ms - takeoff_state.catapult_launch_ms;
+            if (since_launch_ms < 300U) {
+                rollController.reset_I();
+                pitchController.reset_I();
+                yawController.reset_I();
+            } else if (since_launch_ms > 5000U) {
+                // clear state so next launch can be detected
+                takeoff_state.catapult_launch_ms = 0;
+            }
         }
     }
 }

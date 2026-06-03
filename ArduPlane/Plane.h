@@ -450,6 +450,9 @@ private:
         float throttle_lim_min;
         uint32_t throttle_max_timer_ms;
         uint32_t level_off_start_time_ms;
+        // Time of catapult launch detection (millis). Zero = not detected.
+        // Used to reset attitude integrators at the launch moment (GPS-denied safe).
+        uint32_t catapult_launch_ms;
         // Good candidate for keeping the initial time for TKOFF_THR_MAX_T.
 #if MODE_AUTOLAND_ENABLED
        struct {
