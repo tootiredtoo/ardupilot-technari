@@ -1,36 +1,18 @@
-name: SITL Build & Test
+name: Build & Test
 
-# Triggers:
-#   push      → build only (fast feedback, saves CI minutes)
-#   pull_request → build + full test suite
-#   workflow_dispatch → manual trigger with optional test toggle
 on:
-  push:
-    branches:
-      - feature/integral_error_minimization
-    paths:
-      # only rebuild when actual code or tests change
-      - 'ArduPlane/**'
-      - 'libraries/APM_Control/**'
-      - 'libraries/AP_AHRS/**'
-      - 'tests/sitl_*.py'
-      - '.github/workflows/sitl_build_and_test.yml'
+  # Run automatically on every PR and every push to a PR branch
   pull_request:
-    branches:
-      - feature/integral_error_minimization
-      - master
+    types: [opened, synchronize, reopened]
+
+  # Manual trigger — lets you run tests on any branch without a PR
   workflow_dispatch:
-    inputs:
-      run_tests:
-        description: 'Run SITL tests after build'
-        required: false
-        default: 'true'
-        type: boolean
 
 jobs:
-  build-sitl:
-    name: Build ArduPlane SITL (x86-64 Linux)
-    runs-on: ubuntu-latest          # same arch as WSL Ubuntu — no cross-compile
+  # ── Job 1: Build Pixhawk6X firmware ──────────────────────────────────────
+  build-pixhawk6x:
+    name: Build ArduPlane — Pixhawk6X
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -47,74 +29,66 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            gcc g++ make git \
-            python3-dev python3-pip
-          pip install empy==3.3.4 pymavlink
+            gcc-arm-none-eabi binutils-arm-none-eabi
+          pip install empy==3.3.4
 
-      - name: Configure waf for SITL
-        run: python3 waf configure --board sitl
+      - name: Configure waf for Pixhawk6X
+        run: python3 waf configure --board Pixhawk6X
 
-      - name: Build ArduPlane SITL binary
+      - name: Build ArduPlane Pixhawk6X
         run: python3 waf --targets bin/arduplane
 
-      - name: Upload SITL binary
+      - name: Upload Pixhawk6X firmware
         uses: actions/upload-artifact@v4
         with:
-          name: arduplane-sitl-${{ github.sha }}
-          path: build/sitl/bin/arduplane
-          retention-days: 7
+          name: arduplane-Pixhawk6X-${{ github.sha }}
+          path: |
+            build/Pixhawk6X/bin/arduplane.apj
+            build/Pixhawk6X/bin/arduplane.bin
+          retention-days: 30
 
-  test-sitl:
-    name: Run SITL integration tests
+  # ── Job 2: Build SITL + run all 3 integration tests ──────────────────────
+  sitl-tests:
+    name: SITL Tests
     runs-on: ubuntu-latest
-    needs: build-sitl
-    # Run tests on PRs, manual dispatch, or when explicitly requested.
-    # Skip on plain push to save CI minutes (private repo limit).
-    if: >
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'workflow_dispatch' && inputs.run_tests == 'true')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install test dependencies
-        run: pip install pymavlink
-
-      - name: Download SITL binary
-        uses: actions/download-artifact@v4
-        with:
-          name: arduplane-sitl-${{ github.sha }}
-          path: build/sitl/bin/
-
-      - name: Make binary executable
-        run: chmod +x build/sitl/bin/arduplane
-
-      - name: Test 1 — Fix #2 catapult standby (calm day + ramp angle)
+      - name: Install dependencies
         run: |
-          python3 tests/sitl_catapult_test.py \
-            --binary build/sitl/bin/arduplane
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends gcc g++ make
+          pip install empy==3.3.4 pymavlink
+
+      - name: Configure waf for SITL
+        run: python3 waf configure --board sitl
+
+      - name: Build ArduPlane SITL
+        run: python3 waf --targets bin/arduplane
+
+      - name: Test 1 — Fix #2 catapult standby (calm day + 12.35° ramp angle)
+        run: python3 tests/sitl_catapult_test.py --binary build/sitl/bin/arduplane
         timeout-minutes: 5
 
       - name: Test 2 — Fix #1 windy-day full scenario
-        run: |
-          python3 tests/sitl_full_scenario_test.py \
-            --binary build/sitl/bin/arduplane
+        run: python3 tests/sitl_full_scenario_test.py --binary build/sitl/bin/arduplane
         timeout-minutes: 5
 
       - name: Test 3 — Integration (standby + launch + gusty flight)
-        run: |
-          python3 tests/sitl_integration_test.py \
-            --binary build/sitl/bin/arduplane
+        run: python3 tests/sitl_integration_test.py --binary build/sitl/bin/arduplane
         timeout-minutes: 5
 
       - name: Upload flight logs
-        if: always()   # upload even on test failure for debugging
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: flight-logs-${{ github.sha }}
