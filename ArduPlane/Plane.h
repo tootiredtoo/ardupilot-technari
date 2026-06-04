@@ -658,6 +658,12 @@ private:
     // ground mode is true when disarmed and not flying
     bool ground_mode;
 
+    // catapult_ground_hold is true while armed on the catapult rail:
+    // airspeed is below the minimum flyable speed and altitude is low.
+    // While true, attitude controller integrators are frozen at zero
+    // (GR-008-style pre-launch integrator freeze state machine).
+    bool catapult_ground_hold;
+
     // Navigation control variables
     // The instantaneous desired bank angle.  Hundredths of a degree
     int32_t nav_roll_cd;

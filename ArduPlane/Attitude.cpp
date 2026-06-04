@@ -182,8 +182,10 @@ float Plane::stabilize_roll_get_roll_out()
     if (control_mode == &mode_stabilize && channel_roll->get_control_in() != 0) {
         disable_integrator = true;
     }
+    const bool roll_limit_integrator = (ground_mode && !(plane.flight_option_enabled(FlightOptions::DISABLE_GROUND_PID_SUPPRESSION)))
+                                       || catapult_ground_hold;
     return rollController.get_servo_out(nav_roll_cd - ahrs.roll_sensor, speed_scaler, disable_integrator,
-                                        ground_mode && !(plane.flight_option_enabled(FlightOptions::DISABLE_GROUND_PID_SUPPRESSION)));
+                                        roll_limit_integrator);
 }
 
 /*
@@ -265,8 +267,12 @@ float Plane::stabilize_pitch_get_pitch_out()
         demanded_pitch = landing.get_pitch_cd();
     }
 
+    // Suppress integrator wind-up when on the ground (ground_mode) or when
+    // the catapult ground hold is active (armed but below flyable airspeed).
+    const bool pitch_limit_integrator = (ground_mode && !(plane.flight_option_enabled(FlightOptions::DISABLE_GROUND_PID_SUPPRESSION)))
+                                        || catapult_ground_hold;
     return pitchController.get_servo_out(demanded_pitch - ahrs.pitch_sensor, speed_scaler, disable_integrator,
-                                         ground_mode && !(plane.flight_option_enabled(FlightOptions::DISABLE_GROUND_PID_SUPPRESSION)));
+                                         pitch_limit_integrator);
 }
 
 /*
@@ -477,22 +483,60 @@ void Plane::stabilize()
     }
 
     /*
-      see if we should zero the attitude controller integrators. 
-     */
-    if (is_zero(get_throttle_input()) &&
-        fabsf(relative_altitude) < 5.0f && 
-        fabsf(barometer.get_climb_rate()) < 0.5f &&
-        ahrs.groundspeed() < 3) {
-        // we are low, with no climb rate, and zero throttle, and very
-        // low ground speed. Zero the attitude controller
-        // integrators. This prevents integrator buildup pre-takeoff.
+      Catapult ground hold: GR-008-style integrator freeze state machine.
+
+      While the aircraft is armed on the catapult rail (airspeed is below
+      the minimum flyable speed and altitude is near the ground), freeze
+      all attitude-controller integrators at zero every control cycle.
+      This prevents the integrators from winding up during the full
+      pre-launch phase — including when the pilot has already opened the
+      throttle to maximum before the catapult fires.
+
+      The state is released the moment EAS crosses ARSPD_FBW_MIN, i.e.
+      when the catapult has fired and the plane actually starts flying.
+
+      Observed in GR-008 firmware: PIDP.I = 0.000° exactly for ~75 s on
+      the rail even at full throttle; PIDP.Flags = 9 (LIMIT | I_TERM_SET)
+      throughout.  The LIMIT flag appears because we also pass limit=true
+      to the pitch controller below when catapult_ground_hold is active.
+    */
+    {
+        float aspeed_eas = 0.0f;
+        const bool have_eas = ahrs.airspeed_EAS(aspeed_eas);
+        // Fall back to GPS ground speed when no airspeed sensor is fitted.
+        const float aspeed_est = have_eas ? aspeed_eas : ahrs.groundspeed();
+        // Use ARSPD_FBW_MIN as the flyable-speed threshold (minimum 3 m/s).
+        const float arspd_threshold = MAX(float(aparm.airspeed_min), 3.0f);
+        // Altitude guard: stop freezing if we somehow climbed without gaining
+        // airspeed (e.g. winched launch or sensor failure).
+        constexpr float GROUND_HOLD_ALT_M = 15.0f;
+
+        catapult_ground_hold = arming.is_armed_and_safety_off() &&
+                               (aspeed_est < arspd_threshold) &&
+                               (fabsf(relative_altitude) < GROUND_HOLD_ALT_M);
+    }
+
+    if (catapult_ground_hold) {
+        // Freeze integrators at zero.  reset_I() sets I=0 and marks the
+        // I_term_set flag, which is logged as PIDP.Flags bit 3.
+        rollController.reset_I();
+        pitchController.reset_I();
+        yawController.reset_I();
+    } else if (!arming.is_armed_and_safety_off() &&
+               is_zero(get_throttle_input()) &&
+               fabsf(relative_altitude) < 5.0f &&
+               fabsf(barometer.get_climb_rate()) < 0.5f &&
+               ahrs.groundspeed() < 3) {
+        // Original zero-throttle pre-takeoff reset (disarmed / on the
+        // ground with no throttle input).  This is the upstream fallback
+        // for conventional hand-launch or ground-roll takeoffs.
         rollController.reset_I();
         pitchController.reset_I();
         yawController.reset_I();
 
         // if moving very slowly also zero the steering integrator
         if (ahrs.groundspeed() < 1) {
-            steerController.reset_I();            
+            steerController.reset_I();
         }
     }
 }
