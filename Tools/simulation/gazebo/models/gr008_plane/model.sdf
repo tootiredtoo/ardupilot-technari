@@ -1,0 +1,532 @@
+<?xml version="1.0" ?>
+<!--
+  GR-008 Turbine Plane — Gazebo Classic 11 / SDF 1.7
+  Approximate model based on known airframe data.
+
+  Coordinate frame (SDF / Gazebo):
+    X = forward (nose direction)
+    Y = left
+    Z = up
+  Model origin at CG (0.38 m from nose, 0.62 m from tail).
+
+  All aerodynamic coefficients are first-order approximations suitable
+  for state-machine testing.  They are NOT validated against wind-tunnel
+  data.  Perform AUTOTUNE / TECS tune before using for flight dynamics
+  analysis.
+
+  Physics notes:
+  - Mass split: base_link 3.390 kg + 4 × 0.025 kg surfaces + 0.015 kg
+    rudder + 0.001 kg virtual thrust link = 3.5 kg AUW.
+  - Inertia at CG: Ixx=0.08, Iyy=0.15, Izz=0.20 kg·m² (estimated).
+  - Thrust: SW80 ~80 N max, ~64 N at 140 k RPM cruise.  Modelled as
+    direct force via prismatic joint (EFFORT channel).
+-->
+<sdf version="1.7">
+<model name="gr008_plane">
+  <static>false</static>
+
+  <!-- ================================================================
+       BASE LINK — fuselage + wings
+       Origin = CG.  Nose at X=+0.62 m, tail at X=−0.38 m.
+       Left wingtip at Y=+0.50 m, right at Y=−0.50 m.
+  ================================================================ -->
+  <link name="base_link">
+
+    <inertial>
+      <mass>3.390</mass>
+      <pose>0 0 0 0 0 0</pose>
+      <inertia>
+        <ixx>0.0790</ixx><ixy>0</ixy><ixz>0</ixz>
+        <iyy>0.1490</iyy><iyz>0</iyz>
+        <izz>0.1990</izz>
+      </inertia>
+    </inertial>
+
+    <!-- ── Visuals ─────────────────────────────────────────────── -->
+    <!-- Fuselage box: 1.0 m × 0.10 m × 0.10 m, center at X=+0.12 m -->
+    <visual name="fuselage_vis">
+      <pose>0.12 0 0 0 0 0</pose>
+      <geometry><box><size>1.00 0.10 0.10</size></box></geometry>
+      <material>
+        <ambient>0.35 0.35 0.35 1</ambient>
+        <diffuse>0.55 0.55 0.55 1</diffuse>
+        <specular>0.1 0.1 0.1 1</specular>
+      </material>
+    </visual>
+
+    <!-- Wing slab: 1.0 m span, 0.15 m chord, 0.025 m thick -->
+    <visual name="wings_vis">
+      <pose>0.04 0 0 0 0 0</pose>
+      <geometry><box><size>0.15 1.00 0.025</size></box></geometry>
+      <material>
+        <ambient>0.25 0.45 0.75 1</ambient>
+        <diffuse>0.30 0.55 0.85 1</diffuse>
+      </material>
+    </visual>
+
+    <!-- Horizontal stabiliser: 0.35 m span, 0.10 m chord -->
+    <visual name="htail_vis">
+      <pose>-0.28 0 0 0 0 0</pose>
+      <geometry><box><size>0.10 0.35 0.012</size></box></geometry>
+      <material><ambient>0.35 0.35 0.35 1</ambient><diffuse>0.55 0.55 0.55 1</diffuse></material>
+    </visual>
+
+    <!-- Vertical stabiliser: 0.12 m height, 0.12 m chord -->
+    <visual name="vtail_vis">
+      <pose>-0.28 0 0.06 0 0 0</pose>
+      <geometry><box><size>0.12 0.012 0.12</size></box></geometry>
+      <material><ambient>0.35 0.35 0.35 1</ambient><diffuse>0.55 0.55 0.55 1</diffuse></material>
+    </visual>
+
+    <!-- Turbine nozzle (visual only) -->
+    <visual name="turbine_vis">
+      <pose>-0.40 0 0 0 1.5707963 0</pose>
+      <geometry><cylinder><radius>0.04</radius><length>0.12</length></cylinder></geometry>
+      <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
+    </visual>
+
+    <!-- ── Collisions ──────────────────────────────────────────── -->
+    <collision name="fuselage_col">
+      <pose>0.12 0 0 0 0 0</pose>
+      <geometry><box><size>1.00 0.12 0.12</size></box></geometry>
+    </collision>
+    <collision name="wings_col">
+      <pose>0.04 0 0 0 0 0</pose>
+      <geometry><box><size>0.15 1.00 0.025</size></box></geometry>
+    </collision>
+
+    <!-- ── IMU (1 kHz, Pixhawk-class noise) ───────────────────── -->
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>1000</update_rate>
+      <pose>0 0 0 0 0 0</pose>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev><bias_mean>0.0001</bias_mean><bias_stddev>0.0001</bias_stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev><bias_mean>0.0001</bias_mean><bias_stddev>0.0001</bias_stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.009</stddev><bias_mean>0.0001</bias_mean><bias_stddev>0.0001</bias_stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev><bias_mean>0.05</bias_mean><bias_stddev>0.0075</bias_stddev></noise></x>
+          <y><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev><bias_mean>0.05</bias_mean><bias_stddev>0.0075</bias_stddev></noise></y>
+          <z><noise type="gaussian"><mean>0</mean><stddev>0.021</stddev><bias_mean>0.05</bias_mean><bias_stddev>0.0075</bias_stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+
+    <!-- ── GPS (10 Hz) ────────────────────────────────────────── -->
+    <sensor name="gps_sensor" type="gps">
+      <always_on>true</always_on>
+      <update_rate>10</update_rate>
+      <!-- GPS puck: ~0.55 m from nose, left of centre (pitot is nose-left) -->
+      <pose>0.07 -0.02 0.05 0 0 0</pose>
+      <gps>
+        <position_sensing>
+          <horizontal>
+            <noise type="gaussian"><mean>0</mean><stddev>0.5</stddev></noise>
+          </horizontal>
+          <vertical>
+            <noise type="gaussian"><mean>0</mean><stddev>1.0</stddev></noise>
+          </vertical>
+        </position_sensing>
+        <velocity_sensing>
+          <horizontal>
+            <noise type="gaussian"><mean>0</mean><stddev>0.1</stddev></noise>
+          </horizontal>
+          <vertical>
+            <noise type="gaussian"><mean>0</mean><stddev>0.1</stddev></noise>
+          </vertical>
+        </velocity_sensing>
+      </gps>
+    </sensor>
+
+  </link><!-- base_link -->
+
+
+  <!-- ================================================================
+       LEFT AILERON
+       Hinge at trailing edge, outer 40 % of left wing.
+       Centre at (−0.02, +0.38, 0) in base_link frame.
+       Revolute axis Y (rolls left wing trailing edge up/down).
+       Deflection: ±20° (±0.349 rad).
+  ================================================================ -->
+  <link name="left_aileron">
+    <pose>-0.02 0.38 0 0 0 0</pose>
+    <inertial>
+      <mass>0.025</mass>
+      <inertia>
+        <ixx>5.0e-5</ixx><ixy>0</ixy><ixz>0</ixz>
+        <iyy>1.0e-5</iyy><iyz>0</iyz>
+        <izz>5.0e-5</izz>
+      </inertia>
+    </inertial>
+    <visual name="vis">
+      <geometry><box><size>0.05 0.18 0.008</size></box></geometry>
+      <material><ambient>0.85 0.55 0.20 1</ambient><diffuse>0.95 0.65 0.25 1</diffuse></material>
+    </visual>
+    <collision name="col">
+      <geometry><box><size>0.05 0.18 0.008</size></box></geometry>
+    </collision>
+  </link>
+
+  <joint name="left_aileron_joint" type="revolute">
+    <parent>base_link</parent>
+    <child>left_aileron</child>
+    <axis>
+      <xyz>0 1 0</xyz>
+      <use_parent_model_frame>true</use_parent_model_frame>
+      <limit><lower>-0.349</lower><upper>0.349</upper><effort>10</effort><velocity>10</velocity></limit>
+      <dynamics><damping>0.5</damping><friction>0</friction></dynamics>
+    </axis>
+  </joint>
+
+
+  <!-- ================================================================
+       RIGHT AILERON (mirror of left; channel uses negative multiplier)
+  ================================================================ -->
+  <link name="right_aileron">
+    <pose>-0.02 -0.38 0 0 0 0</pose>
+    <inertial>
+      <mass>0.025</mass>
+      <inertia>
+        <ixx>5.0e-5</ixx><ixy>0</ixy><ixz>0</ixz>
+        <iyy>1.0e-5</iyy><iyz>0</iyz>
+        <izz>5.0e-5</izz>
+      </inertia>
+    </inertial>
+    <visual name="vis">
+      <geometry><box><size>0.05 0.18 0.008</size></box></geometry>
+      <material><ambient>0.85 0.55 0.20 1</ambient><diffuse>0.95 0.65 0.25 1</diffuse></material>
+    </visual>
+    <collision name="col">
+      <geometry><box><size>0.05 0.18 0.008</size></box></geometry>
+    </collision>
+  </link>
+
+  <joint name="right_aileron_joint" type="revolute">
+    <parent>base_link</parent>
+    <child>right_aileron</child>
+    <axis>
+      <xyz>0 1 0</xyz>
+      <use_parent_model_frame>true</use_parent_model_frame>
+      <limit><lower>-0.349</lower><upper>0.349</upper><effort>10</effort><velocity>10</velocity></limit>
+      <dynamics><damping>0.5</damping><friction>0</friction></dynamics>
+    </axis>
+  </joint>
+
+
+  <!-- ================================================================
+       ELEVATOR
+       Horizontal tail rear 60 %.  Centre at (−0.30, 0, 0).
+       Revolute axis Y.  Deflection: ±25° (±0.436 rad).
+  ================================================================ -->
+  <link name="elevator">
+    <pose>-0.30 0 0 0 0 0</pose>
+    <inertial>
+      <mass>0.025</mass>
+      <inertia>
+        <ixx>3.0e-4</ixx><ixy>0</ixy><ixz>0</ixz>
+        <iyy>1.5e-5</iyy><iyz>0</iyz>
+        <izz>3.0e-4</izz>
+      </inertia>
+    </inertial>
+    <visual name="vis">
+      <geometry><box><size>0.08 0.35 0.008</size></box></geometry>
+      <material><ambient>0.85 0.55 0.20 1</ambient><diffuse>0.95 0.65 0.25 1</diffuse></material>
+    </visual>
+    <collision name="col">
+      <geometry><box><size>0.08 0.35 0.008</size></box></geometry>
+    </collision>
+  </link>
+
+  <joint name="elevator_joint" type="revolute">
+    <parent>base_link</parent>
+    <child>elevator</child>
+    <axis>
+      <xyz>0 1 0</xyz>
+      <use_parent_model_frame>true</use_parent_model_frame>
+      <limit><lower>-0.436</lower><upper>0.436</upper><effort>10</effort><velocity>10</velocity></limit>
+      <dynamics><damping>0.5</damping><friction>0</friction></dynamics>
+    </axis>
+  </joint>
+
+
+  <!-- ================================================================
+       RUDDER
+       Vertical tail rear 60 %.  Centre at (−0.30, 0, +0.06).
+       Revolute axis Z.  Deflection: ±30° (±0.524 rad).
+  ================================================================ -->
+  <link name="rudder">
+    <pose>-0.30 0 0.07 0 0 0</pose>
+    <inertial>
+      <mass>0.015</mass>
+      <inertia>
+        <ixx>1.0e-5</ixx><ixy>0</ixy><ixz>0</ixz>
+        <iyy>8.0e-5</iyy><iyz>0</iyz>
+        <izz>8.0e-5</izz>
+      </inertia>
+    </inertial>
+    <visual name="vis">
+      <geometry><box><size>0.07 0.008 0.12</size></box></geometry>
+      <material><ambient>0.85 0.55 0.20 1</ambient><diffuse>0.95 0.65 0.25 1</diffuse></material>
+    </visual>
+    <collision name="col">
+      <geometry><box><size>0.07 0.008 0.12</size></box></geometry>
+    </collision>
+  </link>
+
+  <joint name="rudder_joint" type="revolute">
+    <parent>base_link</parent>
+    <child>rudder</child>
+    <axis>
+      <xyz>0 0 1</xyz>
+      <use_parent_model_frame>true</use_parent_model_frame>
+      <limit><lower>-0.524</lower><upper>0.524</upper><effort>10</effort><velocity>10</velocity></limit>
+      <dynamics><damping>0.3</damping><friction>0</friction></dynamics>
+    </axis>
+  </joint>
+
+
+  <!-- ================================================================
+       THRUST LINK — virtual prismatic joint for SW80 turbine thrust.
+       Applying EFFORT along +X on this joint pushes base_link forward.
+       Mass ≈ 0 so all force transfers to base_link.
+       Max force: 80 N (156 000 RPM); cruise 64 N (140 000 RPM).
+  ================================================================ -->
+  <link name="thrust_link">
+    <pose>-0.35 0 0 0 0 0</pose>
+    <inertial>
+      <mass>0.001</mass>
+      <inertia>
+        <ixx>1.0e-7</ixx><ixy>0</ixy><ixz>0</ixz>
+        <iyy>1.0e-7</iyy><iyz>0</iyz>
+        <izz>1.0e-7</izz>
+      </inertia>
+    </inertial>
+  </link>
+
+  <joint name="thrust_joint" type="prismatic">
+    <parent>base_link</parent>
+    <child>thrust_link</child>
+    <axis>
+      <xyz>1 0 0</xyz>
+      <use_parent_model_frame>true</use_parent_model_frame>
+      <limit>
+        <lower>0</lower>
+        <upper>0.002</upper>
+        <effort>100</effort>
+        <velocity>0.01</velocity>
+      </limit>
+      <!-- High damping keeps link stationary; force still transfers to parent -->
+      <dynamics><damping>5000</damping><friction>0</friction></dynamics>
+    </axis>
+  </joint>
+
+
+  <!-- ================================================================
+       AERODYNAMIC PLUGINS (libLiftDragPlugin.so)
+
+       Left / right wing halves: symmetric NACA 2412-class section.
+         CL_alpha = 4.752 /rad (finite AR ≈ 6.67 correction applied).
+         CD0 = 0.06 (total parasitic + profile drag approximation).
+         Stall at 15° (0.2618 rad), post-stall slope −3.85 /rad.
+       Elevator: symmetric section, larger cma for pitch authority.
+       Rudder: symmetric section, upward = body-Y (side force).
+  ================================================================ -->
+
+  <plugin name="left_wing_ld" filename="libLiftDragPlugin.so">
+    <a0>0.05</a0>
+    <cla>4.752</cla>
+    <cda>0.06</cda>
+    <cma>0.00</cma>
+    <alpha_stall>0.2618</alpha_stall>
+    <cla_stall>-3.85</cla_stall>
+    <cda_stall>1.0</cda_stall>
+    <cma_stall>0.0</cma_stall>
+    <cp>0.05 0.25 0</cp>
+    <area>0.075</area>
+    <air_density>1.2041</air_density>
+    <forward>1 0 0</forward>
+    <upward>0 0 1</upward>
+    <link_name>base_link</link_name>
+    <!-- Aileron deflection modifies effective AoA on this panel -->
+    <control_joint_name>left_aileron_joint</control_joint_name>
+    <control_joint_rad_to_cl>2.0</control_joint_rad_to_cl>
+  </plugin>
+
+  <plugin name="right_wing_ld" filename="libLiftDragPlugin.so">
+    <a0>0.05</a0>
+    <cla>4.752</cla>
+    <cda>0.06</cda>
+    <cma>0.00</cma>
+    <alpha_stall>0.2618</alpha_stall>
+    <cla_stall>-3.85</cla_stall>
+    <cda_stall>1.0</cda_stall>
+    <cma_stall>0.0</cma_stall>
+    <cp>0.05 -0.25 0</cp>
+    <area>0.075</area>
+    <air_density>1.2041</air_density>
+    <forward>1 0 0</forward>
+    <upward>0 0 1</upward>
+    <link_name>base_link</link_name>
+    <control_joint_name>right_aileron_joint</control_joint_name>
+    <control_joint_rad_to_cl>2.0</control_joint_rad_to_cl>
+  </plugin>
+
+  <!-- Elevator / horizontal tail -->
+  <plugin name="elevator_ld" filename="libLiftDragPlugin.so">
+    <a0>0.00</a0>
+    <cla>3.50</cla>
+    <cda>0.04</cda>
+    <cma>-1.50</cma>
+    <alpha_stall>0.3490</alpha_stall>
+    <cla_stall>-3.00</cla_stall>
+    <cda_stall>1.0</cda_stall>
+    <cma_stall>0.0</cma_stall>
+    <cp>-0.30 0 0</cp>
+    <area>0.035</area>
+    <air_density>1.2041</air_density>
+    <forward>1 0 0</forward>
+    <upward>0 0 1</upward>
+    <link_name>base_link</link_name>
+    <control_joint_name>elevator_joint</control_joint_name>
+    <control_joint_rad_to_cl>2.0</control_joint_rad_to_cl>
+  </plugin>
+
+  <!-- Rudder / vertical tail (lift = side force, upward = body-Y) -->
+  <plugin name="rudder_ld" filename="libLiftDragPlugin.so">
+    <a0>0.00</a0>
+    <cla>3.00</cla>
+    <cda>0.03</cda>
+    <cma>0.00</cma>
+    <alpha_stall>0.3490</alpha_stall>
+    <cla_stall>-2.50</cla_stall>
+    <cda_stall>1.0</cda_stall>
+    <cma_stall>0.0</cma_stall>
+    <cp>-0.30 0 0.05</cp>
+    <area>0.022</area>
+    <air_density>1.2041</air_density>
+    <forward>1 0 0</forward>
+    <upward>0 1 0</upward>
+    <link_name>base_link</link_name>
+    <control_joint_name>rudder_joint</control_joint_name>
+    <control_joint_rad_to_cl>2.0</control_joint_rad_to_cl>
+  </plugin>
+
+
+  <!-- ================================================================
+       ARDUPILOT PLUGIN (libArduPilotPlugin.so)
+
+       Listens on 9002 (servo packets from ArduPilot → Gazebo).
+       Sends FDM packets on 9003 (IMU + pose + velocity → ArduPilot).
+
+       Frame transforms:
+         modelXYZToAirplaneXForwardZDown: 180° roll rotates Gazebo
+           (+X fwd, +Z up) into ArduPilot body frame (+X fwd, +Z down).
+         gazeboXYZToNED: converts Gazebo ENU world → NED world frame.
+
+       Control formula: cmd = (motor_speed + offset) * multiplier
+         motor_speed = (PWM − 1000) / 1000  ∈ [0 .. 1]
+
+       Channel → SERVO mapping:
+         ch 0 = SERVO1 = left aileron   (POSITION, ±20°)
+         ch 1 = SERVO2 = right aileron  (POSITION, ±20°, reversed)
+         ch 2 = SERVO3 = throttle       (EFFORT,   0 .. 80 N)
+         ch 3 = SERVO4 = elevator       (POSITION, ±25°)
+         ch 4 = SERVO5 = rudder         (POSITION, ±30°)
+  ================================================================ -->
+  <plugin name="arduplane_plugin" filename="libArduPilotPlugin.so">
+
+    <fdm_addr>127.0.0.1</fdm_addr>
+    <fdm_port_in>9002</fdm_port_in>
+    <fdm_port_out>9003</fdm_port_out>
+
+    <!-- Gazebo body frame → ArduPilot body frame (180° about X) -->
+    <modelXYZToAirplaneXForwardZDown>0 0 0 3.14159265 0 0</modelXYZToAirplaneXForwardZDown>
+    <!-- Gazebo ENU world → ArduPilot NED world -->
+    <gazeboXYZToNED>0 0 0 3.14159265 0 1.57079633</gazeboXYZToNED>
+
+    <imuName>base_link::imu_sensor</imuName>
+    <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
+
+    <!-- ch 0: left aileron — positive deflection = trailing edge up -->
+    <control channel="0">
+      <type>POSITION</type>
+      <offset>-0.5</offset>
+      <p_gain>10</p_gain>
+      <i_gain>0</i_gain>
+      <d_gain>0</d_gain>
+      <i_max>0</i_max>
+      <i_min>0</i_min>
+      <cmd_max>0.349</cmd_max>
+      <cmd_min>-0.349</cmd_min>
+      <jointName>left_aileron_joint</jointName>
+      <multiplier>0.698</multiplier>
+    </control>
+
+    <!-- ch 1: right aileron — negative multiplier for opposite deflection -->
+    <control channel="1">
+      <type>POSITION</type>
+      <offset>-0.5</offset>
+      <p_gain>10</p_gain>
+      <i_gain>0</i_gain>
+      <d_gain>0</d_gain>
+      <i_max>0</i_max>
+      <i_min>0</i_min>
+      <cmd_max>0.349</cmd_max>
+      <cmd_min>-0.349</cmd_min>
+      <jointName>right_aileron_joint</jointName>
+      <multiplier>-0.698</multiplier>
+    </control>
+
+    <!-- ch 2: turbine throttle → thrust force 0 .. 80 N along +X -->
+    <!-- idle RPM ≈ PWM 1100; cruise (140 k) ≈ 64 N ≈ PWM 1800;   -->
+    <!-- max (156 k) ≈ 80 N ≈ PWM 2000                             -->
+    <control channel="2">
+      <type>EFFORT</type>
+      <offset>0</offset>
+      <p_gain>0</p_gain>
+      <i_gain>0</i_gain>
+      <d_gain>0</d_gain>
+      <i_max>0</i_max>
+      <i_min>0</i_min>
+      <cmd_max>80</cmd_max>
+      <cmd_min>0</cmd_min>
+      <jointName>thrust_joint</jointName>
+      <multiplier>80</multiplier>
+    </control>
+
+    <!-- ch 3: elevator — positive = nose-down (trailing edge down) -->
+    <control channel="3">
+      <type>POSITION</type>
+      <offset>-0.5</offset>
+      <p_gain>10</p_gain>
+      <i_gain>0</i_gain>
+      <d_gain>0</d_gain>
+      <i_max>0</i_max>
+      <i_min>0</i_min>
+      <cmd_max>0.436</cmd_max>
+      <cmd_min>-0.436</cmd_min>
+      <jointName>elevator_joint</jointName>
+      <multiplier>0.872</multiplier>
+    </control>
+
+    <!-- ch 4: rudder — positive = nose-right (trailing edge right) -->
+    <control channel="4">
+      <type>POSITION</type>
+      <offset>-0.5</offset>
+      <p_gain>10</p_gain>
+      <i_gain>0</i_gain>
+      <d_gain>0</d_gain>
+      <i_max>0</i_max>
+      <i_min>0</i_min>
+      <cmd_max>0.524</cmd_max>
+      <cmd_min>-0.524</cmd_min>
+      <jointName>rudder_joint</jointName>
+      <multiplier>1.047</multiplier>
+    </control>
+
+  </plugin>
+
+</model>
+</sdf>
