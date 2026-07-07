@@ -1,0 +1,65 @@
+# ArduPlane parameters for GR-008 turbine plane in Gazebo Classic simulation.
+#
+# Servo channel assignments (match model.sdf plugin):
+#   SERVO1 (ch 0) = left aileron   (function  4)
+#   SERVO2 (ch 1) = right aileron  (function  4, reversed)
+#   SERVO3 (ch 2) = throttle       (function 70)
+#   SERVO4 (ch 3) = elevator       (function 19)
+#   SERVO5 (ch 4) = rudder         (function 21)
+#
+SERVO1_FUNCTION     4
+SERVO2_FUNCTION     4
+SERVO2_REVERSED     1
+SERVO3_FUNCTION     70
+SERVO4_FUNCTION     19
+SERVO5_FUNCTION     21
+
+# INS: minimal offsets so ArduPilot accepts Gazebo's simulated IMU.
+INS_ACCOFFS_X       0.001
+INS_ACCOFFS_Y       0.001
+INS_ACCOFFS_Z       0.001
+INS_ACCSCAL_X       1.001
+INS_ACCSCAL_Y       1.001
+INS_ACCSCAL_Z       1.001
+INS_ACC2OFFS_X      0.001
+INS_ACC2OFFS_Y      0.001
+INS_ACC2OFFS_Z      0.001
+INS_ACC2SCAL_X      1.001
+INS_ACC2SCAL_Y      1.001
+INS_ACC2SCAL_Z      1.001
+INS_GYR_CAL         0
+
+# Airspeed: disabled (use ground speed fallback; pitot not simulated)
+ARSPD_TYPE          0
+
+# Battery monitor: voltage/current from Gazebo
+BATT_MONITOR        4
+
+# Catapult / takeoff parameters (match SITL tests)
+ARSPD_FBW_MIN       12
+ARSPD_FBW_MAX       30
+TRIM_ARSPD_CM       1500
+TRIM_THROTTLE       60
+TKOFF_THR_MINACC    0
+
+# Catapult rail pitch trim: −12.3° (nose-up angle of catapult)
+# Set to 0 after launch (mirrors what the SITL tests do with AHRS_TRIM_Y)
+AHRS_TRIM_Y         -0.21467
+
+# PID initial values (tune in flight; these give stable first flight)
+PTCH_RATE_P         0.08
+PTCH_RATE_I         0.15
+PTCH_RATE_D         0.004
+PTCH_RATE_IMAX      0.666
+PTCH_RATE_FF        0.345
+RLL_RATE_P          0.10
+RLL_RATE_I          0.10
+RLL_RATE_D          0.004
+RLL_RATE_IMAX       0.666
+
+# TECS speed/height control
+TECS_CLMB_MAX       15
+TECS_SINK_MIN       3
+TECS_SINK_MAX       10
+TECS_PITCH_MAX      25
+TECS_PITCH_MIN      -15
